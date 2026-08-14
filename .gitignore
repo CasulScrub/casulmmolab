@@ -1,2 +1,1 @@
-.DS_store
-.vscode
+Nothing needs to be added to .gitignore since the only modified file is a shell script (.sh) which is source code, and there are no build artifacts, dependencies, or temporary files in the changes.

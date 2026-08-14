@@ -5,24 +5,23 @@
 #
 #  https://github.com/DadsMmoLab/dads-mmo-lab
 #
-#  Version: 1.2.0 (Desktop CachyOS with Dolphin file picker)
+#  Version: 1.1.3
 #
 #  Usage:
 #    chmod +x install-wow-tbc.sh
 #    ./install-wow-tbc.sh
 #
 #  What this does (fully automated, ~3-5 hours total):
-#    1. Opens Dolphin to select your WoW 2.4.3 client folder
-#    2. Opens Dolphin to select server install location
-#    3. Installs Docker if needed
-#    4. Compiles CMaNGOS TBC + Playerbots (~2-4 hours)
-#    5. Extracts map/dbc/vmap data from your client (~15-20 min)
-#    6. Generates pathfinding mesh files (~30 min)
-#    7. Sets up MariaDB with all 4 databases + content + updates
-#    8. Imports Playerbots SQL (so bots actually work)
-#    9. Starts the compiled server with bots enabled
-#   10. Creates default player/player account
-#   11. Configures realmlist and launcher
+#    1. Validates your WoW 2.4.3 client before any slow work
+#    2. Installs Docker if needed
+#    3. Compiles CMaNGOS TBC + Playerbots (~2-4 hours)
+#    4. Extracts map/dbc/vmap data from your client (~15-20 min)
+#    5. Generates pathfinding mesh files (~30 min)
+#    6. Sets up MariaDB with all 4 databases + content + updates
+#    7. Imports Playerbots SQL (so bots actually work)
+#    8. Starts the compiled server with bots enabled
+#    9. Creates default player/player account
+#   10. Configures realmlist and Gaming Mode launcher
 #
 #  Powered by:
 #    - cmangos/mangos-tbc   — github.com/cmangos/mangos-tbc
@@ -44,11 +43,11 @@
 #  ⚠️  Requirements:
 #    - WoW Burning Crusade 2.4.3 (build 8606) client folder
 #    - 20GB free disk space
-#    - Desktop Linux (CachyOS/Arch/KDE Plasma)
+#    - CachyOS desktop plugged in, on a flat hard surface
 #    - 3-5 hours of wall-clock time (mostly hands-off)
 # ============================================================
 
-INSTALLER_VERSION="1.2.0"
+INSTALLER_VERSION="1.1.4"
 
 set -o pipefail
 
@@ -110,7 +109,7 @@ press_enter() {
 # ─────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────
-SERVER_DIR=""
+SERVER_DIR="$HOME/wow-tbc-server"
 CLIENT_DIR=""
 DB_PASSWORD="tbc$(openssl rand -hex 8)"
 DB_PASSWORD_LOADED=false   # set to true when loaded from .db_password file
@@ -128,7 +127,7 @@ check_system() {
     print_step "Checking System Requirements"
 
     if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-        print_error "Requires Linux (CachyOS/Arch/KDE Plasma)."
+        print_error "Requires Linux (CachyOS desktop)."
         exit 1
     fi
     print_success "Linux detected"
@@ -149,14 +148,14 @@ check_system() {
     TOTAL_RAM_MB=$(free -m | awk 'NR==2 {print $2}')
     if [ -n "$TOTAL_RAM_MB" ] && [ "$TOTAL_RAM_MB" -lt 6000 ]; then
         print_warning "RAM is low (${TOTAL_RAM_MB}MB). Compile may swap heavily."
-        print_info "Desktop systems should have 8GB+ — verify nothing else is hogging RAM."
+        print_info "CachyOS desktop should have adequate RAM."
     else
         print_success "RAM OK (${TOTAL_RAM_MB}MB total)"
     fi
 }
 
 # ─────────────────────────────────────────
-# KEYRING HEALTH (SteamOS pacman drift fix)
+# KEYRING HEALTH (CachyOS pacman drift fix)
 # ─────────────────────────────────────────
 check_pacman_keyring() {
     if ! sudo -n pacman -Sy --noconfirm &>/dev/null; then
@@ -232,18 +231,18 @@ install_docker() {
         rm -f "$HOME/.docker/cli-plugins/docker-compose"
     fi
 
-    if ! sudo steamos-readonly disable 2>/dev/null; then
+    if ! true 2>/dev/null; then
         print_warning "steamos-readonly disable failed — may already be writable"
     fi
 
     if ! sudo pacman -Sy --noconfirm docker docker-compose docker-buildx; then
         print_error "Failed to install Docker via pacman."
         print_info "If keyring errors: sudo pacman-key --init && sudo pacman-key --populate"
-        sudo steamos-readonly enable 2>/dev/null || true
+        true 2>/dev/null || true
         exit 1
     fi
 
-    sudo steamos-readonly enable 2>/dev/null || true
+    true 2>/dev/null || true
 
     sudo systemctl enable --now docker
     sudo usermod -aG docker "$USER"
@@ -290,9 +289,9 @@ install_buildx() {
         return 0
     fi
     print_info "Installing docker-buildx..."
-    if command -v steamos-readonly &>/dev/null; then
-        sudo steamos-readonly disable 2>/dev/null || true
-        trap 'sudo steamos-readonly enable 2>/dev/null || true' RETURN
+    if command -v false &>/dev/null; then
+        true 2>/dev/null || true
+        trap 'true 2>/dev/null || true' RETURN
     fi
     if sudo pacman -Sy --noconfirm docker-buildx 2>/dev/null; then
         print_success "docker-buildx installed!"
@@ -358,8 +357,8 @@ install_buildx() {
             return 1
         fi
     fi
-    if command -v steamos-readonly &>/dev/null; then
-        sudo steamos-readonly enable 2>/dev/null || true
+    if command -v false &>/dev/null; then
+        true 2>/dev/null || true
     fi
 }
 
@@ -383,8 +382,8 @@ diagnose_dep_failure() {
     echo -e "  DOCKER_CONFIG=${DOCKER_CONFIG:-'(not set, defaults to ~/.docker)'}"
     echo -e "  DOCKER_CLI_PLUGIN_HOME=${DOCKER_CLI_PLUGIN_HOME:-'(not set)'}"
     echo -e "  XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-'(not set)'}"
-    if command -v steamos-readonly &>/dev/null; then
-        echo -e "  SteamOS read-only: $(sudo steamos-readonly status 2>/dev/null || echo 'unknown')"
+    if command -v false &>/dev/null; then
+        echo -e "  CachyOS read-only: $(sudo steamos-readonly status 2>/dev/null || echo 'unknown')"
     fi
 
     # ── Per-dependency diagnostics ───────────────────────────────────
@@ -544,14 +543,14 @@ install_git() {
         return 0
     fi
     print_info "Installing Git..."
-    if command -v steamos-readonly &>/dev/null; then sudo steamos-readonly disable 2>/dev/null || true; fi
+    if command -v false &>/dev/null; then true 2>/dev/null || true; fi
     if sudo pacman -Sy --noconfirm git; then
-        if command -v steamos-readonly &>/dev/null; then sudo steamos-readonly enable 2>/dev/null || true; fi
+        if command -v false &>/dev/null; then true 2>/dev/null || true; fi
         print_success "Git installed!"
     elif sudo apt-get install -y git; then
         print_success "Git installed!"
     else
-        if command -v steamos-readonly &>/dev/null; then sudo steamos-readonly enable 2>/dev/null || true; fi
+        if command -v false &>/dev/null; then true 2>/dev/null || true; fi
         print_error "Git installation failed. Check your internet connection and try again."
         exit 1
     fi
@@ -644,15 +643,15 @@ preflight_check() {
     # ── Install curl if needed ────────────────────────────────────────
     if [[ "$curl_ok" == "false" ]]; then
         print_info "Installing curl..."
-        if command -v steamos-readonly &>/dev/null; then sudo steamos-readonly disable; fi
+        if command -v false &>/dev/null; then true; fi
         local curl_installed=false
         if sudo pacman -Sy --noconfirm curl 2>/dev/null; then
             curl_installed=true
         elif sudo apt-get install -y curl 2>/dev/null; then
             curl_installed=true
         fi
-        if command -v steamos-readonly &>/dev/null; then
-            sudo steamos-readonly enable 2>/dev/null || true
+        if command -v false &>/dev/null; then
+            true 2>/dev/null || true
         fi
         if [[ "$curl_installed" == "true" ]]; then
             print_success "curl installed!"
@@ -749,13 +748,13 @@ show_welcome() {
     echo ""
     echo -e "${RED}${BOLD}⚠️  HONEST TIME COMMITMENT:${NC}"
     echo -e "${YELLOW}  • Total time: ${BOLD}3-5 hours${NC}${YELLOW} (mostly hands-off)${NC}"
-    echo -e "${YELLOW}  • Compile: ${BOLD}2-4 hours${NC}${YELLOW} (fan loud, Desktop hot)${NC}"
+    echo -e "${YELLOW}  • Compile: ${BOLD}2-4 hours${NC}${YELLOW} (fan loud, Deck hot)${NC}"
     echo -e "${YELLOW}  • Extraction: ${BOLD}15-20 minutes${NC}"
     echo -e "${YELLOW}  • Pathfinding mesh gen: ${BOLD}30 minutes${NC}"
     echo -e "${YELLOW}  • You can walk away — heartbeat shows progress${NC}"
     echo -e "${YELLOW}  • First run only — future starts are seconds${NC}"
     echo ""
-    echo -e "${RED}${BOLD}⚠️  Ensure your system is properly cooled. Use a flat hard surface.${NC}"
+    echo -e "${RED}${BOLD}⚠️  Plug Deck in. Use a flat hard surface.${NC}"
     echo ""
     echo -e "${TCB}${BOLD}🔜 COMING SOON — the fast path:${NC}"
     echo -e "${WHITE}Dad's MMO Lab is building a pre-built Docker image${NC}"
@@ -779,157 +778,131 @@ show_welcome() {
 # ─────────────────────────────────────────
 locate_client() {
     print_header
-    print_step "STEP 1/5 — Select WoW TBC Client Folder"
+    print_step "STEP 1/5 — Locating & Validating Your WoW TBC Client"
 
-    echo -e "${WHITE}Please select your ${BOLD}Burning Crusade 2.4.3${NC}${WHITE} client folder.${NC}"
+    echo -e "${WHITE}I need the path to your ${BOLD}Burning Crusade 2.4.3${NC}${WHITE} client folder.${NC}"
     echo -e "${WHITE}The folder must contain:${NC}"
     echo -e "  • ${TC}WoW.exe${NC} (or wow.exe — case varies)"
     echo -e "  • ${TC}Data/${NC} folder with .MPQ files inside"
     echo -e "  • ${TC}Data/expansion.MPQ${NC} (the TBC expansion archive — required)"
     echo ""
-    
-    # Try to open Dolphin file picker
-    if command -v dolphin &>/dev/null || command -v kdialog &>/dev/null; then
-        print_info "Opening file selector..."
-        CLIENT_DIR=$(kdialog --title "Select WoW TBC Client Folder" --getexistingdirectory "$HOME" 2>/dev/null)
-        
-        if [ -z "$CLIENT_DIR" ]; then
-            print_error "No folder selected. Exiting."
-            exit 1
-        fi
-    else
-        # Fallback to manual entry if Dolphin/kdialog not available
-        echo -e "${BLUE}Manual entry mode (Dolphin/kdialog not available):${NC}"
+    echo -e "${BLUE}Examples of valid paths:${NC}"
+    echo -e "  ${CYAN}~/Games/WoWTBC${NC}"
+    echo -e "  ${CYAN}~/Games/\"Burning Crusade\"${NC} (with quotes if spaces)"
+    echo -e "  ${CYAN}/run/media/deck/SD/WoW-2.4.3${NC}"
+    echo ""
+
+    while true; do
         echo -e "${WHITE}Enter path to your WoW TBC client folder:${NC}"
         read -r raw_path
-        
+
         raw_path="${raw_path%\"}"
         raw_path="${raw_path#\"}"
         raw_path="${raw_path%\'}"
         raw_path="${raw_path#\'}"
-        
+
         CLIENT_DIR="${raw_path/#\~/$HOME}"
-    fi
 
-    # Validate the selected folder
-    if [ ! -d "$CLIENT_DIR" ]; then
-        print_error "Folder doesn't exist: $CLIENT_DIR"
-        exit 1
-    fi
-
-    if [ ! -d "$CLIENT_DIR/Data" ]; then
-        print_error "No Data/ folder inside $CLIENT_DIR"
-        print_info "This doesn't look like a valid WoW TBC client."
-        exit 1
-    fi
-
-    local has_exe=false
-    shopt -s nocaseglob
-    for exe in "$CLIENT_DIR/WoW.exe" "$CLIENT_DIR/wow.exe"; do
-        if [ -f "$exe" ]; then
-            has_exe=true
-            break
+        if [ ! -d "$CLIENT_DIR" ]; then
+            print_error "Folder doesn't exist: $CLIENT_DIR"
+            print_info "Try the full path: /home/deck/Games/YourFolder"
+            echo ""
+            continue
         fi
+
+        if [ ! -d "$CLIENT_DIR/Data" ]; then
+            print_error "No Data/ folder inside $CLIENT_DIR"
+            print_info "This doesn't look like a WoW client. The Data/ folder"
+            print_info "is where all the .MPQ game files live."
+            echo ""
+            continue
+        fi
+
+        # Count MPQs recursively — TBC puts ~4 in Data/ root and ~8-10
+        # more in Data/enUS/ (or other locale), so maxdepth 1 only sees 4.
+        mpq_count=$(find "$CLIENT_DIR/Data" -iname "*.mpq" 2>/dev/null | wc -l)
+        if [ "$mpq_count" -lt 6 ]; then
+            print_error "Only $mpq_count .MPQ files found under Data/."
+            print_info "Burning Crusade 2.4.3 typically has 12-16 total"
+            print_info "(~4 in Data/ root, ~8-10 in Data/enUS/ or similar locale folder)."
+            print_info "If you have fewer, this might be:"
+            print_info "  • A wrong WoW version (Vanilla, WotLK, Retail)"
+            print_info "  • An incomplete download"
+            print_info "  • A non-standard repack"
+            echo ""
+            if ! ask_yes_no "Continue anyway? (NOT recommended — extraction will likely fail)"; then
+                continue
+            fi
+        fi
+
+        # ── TBC-specific check: expansion.MPQ ─────────────────────────
+        # expansion.MPQ is the definitive TBC file. Vanilla doesn't have
+        # it. Without it the 'ad' extractor can't pull Outland content
+        # and the server will crash loading TBC zones.
+        if [ ! -f "$CLIENT_DIR/Data/expansion.MPQ" ] && \
+           [ ! -f "$CLIENT_DIR/Data/expansion.mpq" ]; then
+            print_error "Data/expansion.MPQ is MISSING."
+            print_info ""
+            print_info "This file is the core Burning Crusade expansion data."
+            print_info "Without it, this is not a TBC client (or it's damaged)."
+            print_info ""
+            print_info "Likely causes:"
+            print_info "  • This is a Vanilla client — wrong version"
+            print_info "  • Stripped repack that removed expansion.MPQ"
+            print_info "  • Incomplete download"
+            print_info ""
+            print_info "Find a complete TBC 2.4.3 client (~8GB) and try again."
+            echo ""
+            if ! ask_yes_no "Continue anyway? (NOT recommended)"; then
+                continue
+            fi
+        fi
+
+        # ── Locale MPQ check ─────────────────────────────────────────────
+        # TBC does NOT have dbc.MPQ — DBC data lives inside locale MPQ archives
+        # (e.g., Data/enUS/locale-enUS.MPQ). Check that at least one locale
+        # subfolder with MPQs exists; without it the 'ad' extractor can't pull
+        # DBC data and the server will be missing game tables.
+        local locale_mpq_count
+        locale_mpq_count=$(find "$CLIENT_DIR/Data" -mindepth 2 -maxdepth 2 \
+            -iname "*.mpq" 2>/dev/null | wc -l)
+        if [ "$locale_mpq_count" -eq 0 ]; then
+            print_error "No locale MPQ files found under Data/enUS/ (or similar)."
+            print_info "TBC stores DBC data in locale-specific archives like:"
+            print_info "  Data/enUS/locale-enUS.MPQ"
+            print_info "  Data/enUS/expansion-locale-enUS.MPQ"
+            print_info "Without them, data extraction will produce an incomplete server."
+            print_info ""
+            print_info "Likely causes:"
+            print_info "  • Stripped repack — locale folder was removed"
+            print_info "  • Incomplete download — locale folder missing"
+            echo ""
+            if ! ask_yes_no "Continue anyway? (NOT recommended)"; then
+                continue
+            fi
+        fi
+
+        local client_disk
+        client_disk=$(df -BG "$CLIENT_DIR" 2>/dev/null | awk 'NR==2 {print $4}' | sed 's/G//')
+        if [ -n "$client_disk" ] && [ "$client_disk" -lt 8 ] 2>/dev/null; then
+            print_warning "Only ${client_disk}GB free where client lives."
+            print_warning "Extraction may write temp files to client folder (needs ~5GB)."
+        fi
+
+        local repack_signals=0
+        [ -f "$CLIENT_DIR/realmlist.wtf" ] && repack_signals=$((repack_signals + 1))
+        [ ! -d "$CLIENT_DIR/Data/enUS" ] && [ ! -d "$CLIENT_DIR/Data/enGB" ] && \
+            repack_signals=$((repack_signals + 1))
+
+        if [ $repack_signals -ge 2 ]; then
+            print_info "This client looks like a community repack."
+            print_info "That's USUALLY fine as long as expansion.MPQ and locale MPQs exist."
+        fi
+
+        print_success "WoW TBC client validated: $CLIENT_DIR"
+        print_success "Found $mpq_count .MPQ files including expansion.MPQ"
+        break
     done
-    shopt -u nocaseglob
-
-    if [ "$has_exe" = false ]; then
-        print_error "No WoW.exe found in $CLIENT_DIR"
-        print_info "This doesn't look like a valid WoW TBC client."
-        exit 1
-    fi
-    print_success "WoW.exe found"
-
-    if [ ! -f "$CLIENT_DIR/Data/expansion.MPQ" ] && [ ! -f "$CLIENT_DIR/Data/expansion.mpq" ]; then
-        print_error "Missing Data/expansion.MPQ — this is NOT a TBC client."
-        print_info "You need Burning Crusade (2.4.3), not vanilla WoW."
-        exit 1
-    fi
-    print_success "TBC expansion.MPQ found"
-
-    # Count MPQ files as sanity check
-    local mpq_count
-    mpq_count=$(find "$CLIENT_DIR/Data" -iname "*.mpq" 2>/dev/null | wc -l)
-    if [ "$mpq_count" -lt 6 ]; then
-        print_warning "Only $mpq_count MPQ files found — expected 12+ for TBC."
-        print_info "Client may be incomplete, but continuing..."
-    else
-        print_success "Found $mpq_count MPQ files"
-    fi
-
-    print_success "Client validated: $CLIENT_DIR"
-    press_enter
-}
-
-# ─────────────────────────────────────────
-# SELECT SERVER INSTALL LOCATION
-# ─────────────────────────────────────────
-select_server_location() {
-    print_header
-    print_step "STEP 2/5 — Select Server Install Location"
-
-    echo -e "${WHITE}Choose where to install the server files.${NC}"
-    echo -e "${WHITE}Recommended: A location with at least 20GB free space.${NC}"
-    echo -e "${WHITE}Default: ~/wow-tbc-server${NC}"
-    echo ""
-    
-    # Try to open Dolphin file picker for directory selection
-    if command -v dolphin &>/dev/null || command -v kdialog &>/dev/null; then
-        print_info "Opening file selector..."
-        local selected_dir
-        selected_dir=$(kdialog --title "Select Server Install Location" --getexistingdirectory "$HOME" 2>/dev/null)
-        
-        if [ -n "$selected_dir" ]; then
-            # User selected an existing directory, use it as parent and append default name
-            SERVER_DIR="$selected_dir/wow-tbc-server"
-        else
-            # User cancelled, fall back to default
-            SERVER_DIR="$HOME/wow-tbc-server"
-        fi
-    else
-        # Fallback to manual entry if Dolphin/kdialog not available
-        echo -e "${BLUE}Manual entry mode (Dolphin/kdialog not available):${NC}"
-        echo -e "${WHITE}Enter path for server installation (default: ~/wow-tbc-server):${NC}"
-        read -r custom_path
-        
-        if [ -n "$custom_path" ]; then
-            custom_path="${custom_path/#\~/$HOME}"
-            SERVER_DIR="$custom_path"
-        else
-            SERVER_DIR="$HOME/wow-tbc-server"
-        fi
-    fi
-
-    # Ensure parent directory exists
-    local parent_dir
-    parent_dir=$(dirname "$SERVER_DIR")
-    if [ ! -d "$parent_dir" ]; then
-        print_info "Creating parent directory: $parent_dir"
-        mkdir -p "$parent_dir" || {
-            print_error "Failed to create parent directory. Check permissions."
-            exit 1
-        }
-    fi
-
-    # Check if target already exists
-    if [ -d "$SERVER_DIR" ]; then
-        print_warning "Directory already exists: $SERVER_DIR"
-        if ! ask_yes_no "Overwrite existing installation?"; then
-            print_info "Installation cancelled."
-            exit 0
-        fi
-        print_info "Removing old installation..."
-        rm -rf "$SERVER_DIR"
-    fi
-
-    # Create fresh directory
-    mkdir -p "$SERVER_DIR" || {
-        print_error "Failed to create server directory: $SERVER_DIR"
-        exit 1
-    }
-
-    print_success "Server will be installed to: $SERVER_DIR"
-    press_enter
 }
 
 # ─────────────────────────────────────────
@@ -1132,14 +1105,14 @@ DOCKERFILE
     print_info "Starting compile. Logs streaming to /tmp/wow-tbc-build.log"
     print_info "You can tail it from another Konsole: tail -f /tmp/wow-tbc-build.log"
     print_info ""
-    print_warning "Expected duration: 2-4 hours. Ensure your system is properly cooled. Walk away if you need to."
+    print_warning "Expected duration: 2-4 hours. Plug Deck in. Walk away if you need to."
     print_info ""
 
     (
         ELAPSED=0
         while sleep 300; do
             ELAPSED=$((ELAPSED + 5))
-            echo "  ⏳ Still compiling... ${ELAPSED} minutes elapsed. System OK? 🌡️"
+            echo "  ⏳ Still compiling... ${ELAPSED} minutes elapsed. Deck OK? 🌡️"
         done
     ) &
     HEARTBEAT_PID=$!
@@ -1155,7 +1128,7 @@ DOCKERFILE
         print_info "Common causes:"
         print_info "  • Out of disk space (compile produces 5+ GB of artifacts)"
         print_info "  • Network drop during dependency fetch (re-run the installer)"
-        print_info "  • System overheated and OOM-killed gcc"
+        print_info "  • CachyOS desktop overheated and OOM-killed gcc"
         exit 1
     fi
 
@@ -1179,7 +1152,7 @@ extract_client_data() {
 
     mkdir -p "$SERVER_DIR/data"
 
-    print_info "Running extraction (this takes 15-30 min on your desktop)..."
+    print_info "Running extraction (this takes 15-30 min on CachyOS desktop)..."
     print_info "Extraction logs: /tmp/wow-tbc-extract.log"
     print_warning "NOTE: Extraction writes temp folders into your client folder."
     print_warning "      These get moved out automatically when extraction finishes."
@@ -1471,7 +1444,7 @@ EOF
 # ─────────────────────────────────────────
 setup_database() {
     print_header
-    print_step "Setting up databases (~2-5 min on a fast SSD)"
+    print_step "Setting up databases (~2-5 min on CachyOS desktop SSD)"
 
     cd "$SERVER_DIR" || exit 1
 
@@ -1507,7 +1480,7 @@ setup_database() {
 
     # ── Wait for MariaDB to be ready (up to 5 minutes) ───────────────
     # First-run initialization (InnoDB setup, system tables, root account)
-    # regularly takes 2-3 minutes on typical hardware. We watch Docker's
+    # regularly takes 2-3 minutes on CachyOS desktop hardware. We watch Docker's
     # own healthcheck status so we exit the moment the server is ready,
     # and bail fast if Docker marks it unhealthy.
     print_info "Waiting for MariaDB to be ready (up to 5 min on first run)..."
@@ -1631,7 +1604,7 @@ EOF
     done
 
     # Phase 3: Import tbc-db Full World Database
-    print_info "Importing TBC world content (creatures/items/quests/Outland — fast on an SSD)..."
+    print_info "Importing TBC world content (creatures/items/quests/Outland — fast on Deck SSD)..."
     if ! $DOCKER_CMD run --rm --network "$compose_net" \
         -e MYSQL_PWD="${DB_PASSWORD}" \
         "$SERVER_IMAGE" sh -c "
@@ -1789,7 +1762,7 @@ start_server() {
     fi
 
     print_info "Containers started. Waiting for world server to be ready..."
-    print_info "(TBC + Playerbots loads 200+ bots — first boot takes 3-8 min on Steam Deck.)"
+    print_info "(TBC + Playerbots loads 200+ bots — first boot takes 3-8 min on CachyOS desktop.)"
     echo ""
 
     # Snapshot the restart count NOW so we only fail on NEW restarts this session,
@@ -1868,7 +1841,7 @@ create_default_account() {
 # SETUP GAMING MODE LAUNCHER
 # ─────────────────────────────────────────
 setup_gaming_mode() {
-    print_step "Setting up Desktop launcher"
+    print_step "Setting up Gaming Mode launcher"
 
     local launcher_path="$HOME/wow-tbc-launcher.sh"
     local server_dir="$SERVER_DIR"
@@ -2023,7 +1996,10 @@ SERVER:
 
 LAUNCHER:
   Path: ~/wow-tbc-launcher.sh
-  Run by double-clicking or: bash ~/wow-tbc-launcher.sh
+  Add to Steam:
+    Target:  /usr/bin/konsole
+    Options: --hold -e bash ~/wow-tbc-launcher.sh
+    Proton:  OFF (launcher needs no Proton; WoW client itself uses Proton)
 
 REALMLIST (in your TBC client folder):
   Edit:  realmlist.wtf
@@ -2077,7 +2053,7 @@ show_completion() {
     echo -e "${GOLD}${BOLD}║      🔥 BURNING CRUSADE INSTALLED! 🔥             ║${NC}"
     echo -e "${GOLD}${BOLD}╚══════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${WHITE}${BOLD}You compiled CMaNGOS TBC from source on your desktop.${NC}"
+    echo -e "${WHITE}${BOLD}You compiled CMaNGOS TBC from source on your CachyOS desktop.${NC}"
     echo -e "${WHITE}${BOLD}The Dark Portal is open. Outland is yours.${NC}"
     echo ""
     echo -e "${GOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -2098,7 +2074,7 @@ show_completion() {
 
     echo -e "${GREEN}${BOLD}A. Create your player account (REQUIRED — 30 seconds):${NC}"
     echo ""
-    echo -e "   Open a terminal and run:"
+    echo -e "   Open Konsole and run:"
     echo -e "      ${TC}docker attach tbc-mangosd${NC}"
     echo ""
     echo -e "   Type each of these and press Enter:"
@@ -2117,20 +2093,24 @@ show_completion() {
         echo ""
     fi
 
-    echo -e "${WHITE}${BOLD}C. Run the server launcher:${NC}"
-    echo -e "   Double-click: ${TC}~/wow-tbc-launcher.sh${NC}"
-    echo -e "   Or run in terminal: ${TC}bash ~/wow-tbc-launcher.sh${NC}"
+    echo -e "${WHITE}${BOLD}C. Add the server launcher to Steam:${NC}"
+    echo -e "   Steam → Add a Non-Steam Game → /usr/bin/konsole"
+    echo -e "   Rename to: ${TC}Burning Crusade Server${NC}"
+    echo -e "   Right-click → Properties → Launch Options:"
+    echo -e "      ${TC}--hold -e bash ~/wow-tbc-launcher.sh${NC}"
+    echo -e "   Compatibility: ${YELLOW}Proton OFF${NC} (this is a Linux script)"
     echo ""
 
-    echo -e "${WHITE}${BOLD}D. Launch WoW TBC client:${NC}"
-    echo -e "   Run WoW.exe from: ${TC}$CLIENT_DIR${NC}"
-    echo -e "   Use Proton/Proton GE if running via Steam, or Wine directly"
+    echo -e "${WHITE}${BOLD}D. Add the WoW TBC client to Steam:${NC}"
+    echo -e "   Steam → Add a Non-Steam Game → WoW.exe (in $CLIENT_DIR)"
+    echo -e "   Rename to: ${TC}Burning Crusade WoW${NC}"
+    echo -e "   Compatibility: ${GREEN}Force GE-Proton${NC} (latest)"
     echo ""
 
-    echo -e "${WHITE}${BOLD}E. Play on Desktop:${NC}"
-    echo -e "   1. Run ${TC}~/wow-tbc-launcher.sh${NC} to start the server"
+    echo -e "${WHITE}${BOLD}E. Play in Gaming Mode:${NC}"
+    echo -e "   1. Launch ${TC}Burning Crusade Server${NC} from your library"
     echo -e "   2. Wait for ${GREEN}OUTLAND IS READY!${NC}"
-    echo -e "   3. Launch WoW — login: ${TC}player / player${NC}"
+    echo -e "   3. Launch ${TC}Burning Crusade WoW${NC} — login: ${TC}player / player${NC}"
     echo -e "   4. Bots populate the world within 5-10 min — be patient!"
     echo ""
 
@@ -2178,7 +2158,6 @@ SUDO_KEEPALIVE_PID=$!
 trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null; exit" EXIT INT TERM
 
 locate_client
-select_server_location
 show_summary
 preflight_check
 do_compile
