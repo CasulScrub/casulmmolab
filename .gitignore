@@ -1,2 +1,1 @@
-.DS_store
-.vscode
+Nothing should be ignored based on the provided file changes. The added file 'guides/wow-tbc/install-wow-tbc-cachyos.sh' is a shell script (source code file) and does not fall under any of the categories that should be ignored according to the rules.
